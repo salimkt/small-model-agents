@@ -107,6 +107,7 @@ class Agent:
                 schema_failures = 0
             except SchemaViolation as exc:
                 schema_failures += 1
+                yield ev.schema_violation(tier.name, schema_failures, str(exc))
                 messages.append({"role": "assistant", "content": raw})
                 messages.append({"role": "user",
                                  "content": f"That response was rejected: {exc} Try again."})

@@ -74,11 +74,15 @@ src/small_model_agents/
   tools.py       tool registry with dependency declaration and graceful degradation
   agent.py       the ReAct-style loop: decide -> validate -> execute -> observe
   events.py      the SSE event taxonomy
+  evaluation.py  the eval suite, metrics, and the regression gate
   mcp_server.py  exposes the registry over Model Context Protocol
 examples/
   research_agent.py   a three-tool agent you can run against a local model
+evals/
+  baseline.json       committed metrics; CI fails if a change is worse
 tests/
   test_escalation.py  the escalation policy, without a model server
+  test_evaluation.py  the harness, and proof that the gate can fail
 ```
 
 It runs against anything OpenAI-compatible — vLLM, Ollama, llama.cpp. There is no
@@ -92,8 +96,8 @@ export OPENAI_BASE_URL=http://localhost:8000/v1   # your vLLM or Ollama
 python -m examples.research_agent "What changed in the CPI print last month?"
 ```
 
-The tests run offline; the model client falls back to a stub when no server is present,
-which is how the escalation policy is tested without a GPU.
+The tests and the eval suite both run offline; the model client falls back to a stub
+when no server is present, which is how the escalation policy is tested without a GPU.
 
 ## As an MCP server
 
@@ -103,6 +107,51 @@ python -m small_model_agents.mcp_server
 
 The same registry, exposed over Model Context Protocol, so the tools can be used by any
 MCP-aware client rather than only by this loop.
+
+## Measuring it
+
+A claim about reliability that you cannot re-run is an anecdote. `evaluation.py` is the
+smallest thing that turns the claim into a measurement.
+
+```bash
+# offline, deterministic, no GPU — this is what CI runs
+python -m small_model_agents.evaluation --simulate
+
+# against a real server
+OPENAI_BASE_URL=http://localhost:8000/v1 python -m small_model_agents.evaluation
+```
+
+Twelve tasks, graded mechanically — not by a judge model, which would put another
+unversioned dependency inside the measurement. Five metrics, and the gate checks all
+five together so that a prompt tweak cannot quietly trade one for another:
+
+| metric | | why it is here |
+|---|---|---|
+| `pass_rate` | higher better | did the run do the thing |
+| `escalation_rate` | lower better | how often the cheap tier was not enough |
+| `schema_violation_rate` | lower better | how often the model broke the output contract |
+| `mean_model_calls` | lower better | the cost proxy |
+| `tool_precision` | higher better | tool calls the task actually wanted |
+
+`schema_violation_rate` is the one people leave out, and it is the one that matters most
+when you are pushing work down onto a smaller model. A repair loop that works is
+invisible in the output and expensive in tokens — without counting violations there is
+no way to tell a good prompt from a bad prompt that happens to self-correct. That is
+why the event taxonomy carries a `schema_violation` event.
+
+`evals/baseline.json` is checked in. A run is compared against it and the process exits
+non-zero if any metric moved the wrong way by more than its tolerance — tight on
+correctness, looser on cost. Regenerating the baseline is a deliberate, reviewable
+commit rather than something a test can do to itself.
+
+The suite is deterministic offline. `SimulatedModel` draws its failures from a seeded
+hash of the call context, weighted by tier, so escalation has something real to fix and
+two runs produce byte-identical metrics. It is a stand-in for testing the harness, not a
+claim about any model. The test that matters is
+`test_gate_catches_a_worse_model` — an eval that cannot fail is decoration.
+
+Nothing in the suite touches the network or the clock. An eval that can flake is not a
+gate.
 
 ## What I would not claim
 

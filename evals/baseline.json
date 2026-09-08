@@ -1,0 +1,11 @@
+{
+  "label": "simulated(reliability=0.75, seed=7)",
+  "metrics": {
+    "n": 12.0,
+    "pass_rate": 1.0,
+    "escalation_rate": 0.037,
+    "schema_violation_rate": 0.1852,
+    "mean_model_calls": 2.25,
+    "tool_precision": 0.9231
+  }
+}

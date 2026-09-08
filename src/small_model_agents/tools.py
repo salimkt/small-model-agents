@@ -12,6 +12,20 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 
+def _absent(module: str) -> bool:
+    """True if `module` cannot be imported.
+
+    `find_spec` does not simply return None for a dotted name whose parent
+    package is missing — it raises ModuleNotFoundError from the parent import.
+    A registry that crashes on `requires=("snowflake.connector",)` defeats the
+    whole purpose of declaring dependencies instead of importing them.
+    """
+    try:
+        return importlib.util.find_spec(module) is None
+    except (ImportError, AttributeError, ValueError):
+        return True
+
+
 class ToolUnavailable(RuntimeError):
     pass
 
@@ -26,7 +40,7 @@ class Tool:
 
     @property
     def missing(self) -> tuple[str, ...]:
-        return tuple(m for m in self.requires if importlib.util.find_spec(m) is None)
+        return tuple(m for m in self.requires if _absent(m))
 
     @property
     def available(self) -> bool:

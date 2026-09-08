@@ -37,6 +37,17 @@ def tool_call_finished(tool: str, ok: bool, result: Any) -> Event:
                  {"tool_name": tool, "ok": ok, "result": str(result)[:2000]})
 
 
+def schema_violation(tier: str, attempt: int, message: str) -> Event:
+    """Emitted so contract breaks can be counted, not just recovered from.
+
+    A repair loop that works is invisible in the output and expensive in tokens.
+    Without this event there is no way to tell a good prompt from a bad prompt
+    that happens to self-correct.
+    """
+    return Event("schema_violation",
+                 {"tier": tier, "attempt": attempt, "message": message})
+
+
 def escalated(frm: str, to: str, reason: str) -> Event:
     return Event("tier_escalated", {"from": frm, "to": to, "reason": reason})
 
