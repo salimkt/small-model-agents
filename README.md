@@ -3,13 +3,53 @@
 **Reliable multi-agent tool calling on a 12B model, by giving the model less to decide.**
 
 I spent a chunk of the last two years replacing a framework-based multi-agent stack
-with a deterministic orchestrator. The headline result was that a **12B model did the
-work the previous stack needed a 32B model for** — enough GPU saving to run the whole
-platform on a single node instead of a cluster.
+with a deterministic orchestrator. The headline result was that a **12B model did
+32B-class work** — enough GPU saving to run the whole platform on a single node instead
+of a cluster.
 
 This repository is the idea, extracted and rebuilt from scratch as something you can
 run. It is not the system I built at work; it is the smallest honest expression of what
 made that system work.
+
+No live demo: this is a library. Here is what CI runs on every push (the offline
+eval, with a seeded simulated model):
+
+```text
+$ python -m small_model_agents.evaluation --simulate
+  ...
+  pass  multi-step        calls=5 steps=2 viol=2 esc=1 tier=LARGE
+  pass  no-tool           calls=2 steps=0 viol=1 esc=0 tier=SMALL
+  pass  unavailable-tool  calls=2 steps=1 viol=0 esc=0 tier=SMALL
+
+metrics:
+  n                        12.0
+  pass_rate                1.0
+  escalation_rate          0.037
+  schema_violation_rate    0.1852
+  mean_model_calls         2.25
+  tool_precision           0.9231
+```
+
+## What's interesting here
+
+- **Every model call is a narrow, schema-validated decision.** A violation is quoted
+  back to the model and retried; control flow lives in plain, testable Python.
+- **Tiered routing with evidence-based escalation.** `FAST` / `SMALL` / `LARGE` /
+  `THINKING` tiers; a turn escalates only on a measurable signal, and every escalation
+  carries a reason you can count.
+- **A tool registry that degrades instead of crashing.** Tools declare their
+  dependencies; a missing driver makes that tool report "unavailable", not the process
+  fail at import.
+- **An eval gate that can actually fail.** Twelve mechanically graded tasks, five
+  metrics checked together against a committed baseline, and a test proving the gate
+  rejects a worse model.
+- **Zero runtime dependencies.** Standard library only, with an MCP server (stdio
+  JSON-RPC) over the same registry.
+
+## Tech stack
+
+Python 3.11+ (standard library only at runtime) · any OpenAI-compatible server (vLLM,
+Ollama, llama.cpp) · Model Context Protocol · pytest · GitHub Actions
 
 ---
 
@@ -88,13 +128,25 @@ tests/
 It runs against anything OpenAI-compatible — vLLM, Ollama, llama.cpp. There is no
 dependency on a hosted provider.
 
-## Running it
+## Run locally
+
+There are no runtime dependencies, so a plain virtual environment is enough. Run these
+from the repository root (the example lives in `examples/`, which is not part of the
+installed package).
 
 ```bash
-uv sync
-export OPENAI_BASE_URL=http://localhost:8000/v1   # your vLLM or Ollama
-python -m examples.research_agent "What changed in the CPI print last month?"
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,examples]"     # pytest for the tests, httpx for the fetch_url tool
+
+pytest -q                                           # 15 tests, offline
+python -m small_model_agents.evaluation --simulate  # the CI eval gate
+
+export OPENAI_BASE_URL=http://localhost:8000/v1     # your vLLM or Ollama
+python -m examples.research_agent "What is 17% of 2340, and what day is it?"
 ```
+
+With uv instead: `uv venv && uv pip install -e ".[dev,examples]"`, then the same commands
+with `uv run` in front.
 
 The tests and the eval suite both run offline; the model client falls back to a stub
 when no server is present, which is how the escalation policy is tested without a GPU.
@@ -169,4 +221,4 @@ degrades.
 
 **Muhammed Salim K T** — AI/ML engineer, Kochi, India.
 [mohdsalimkt@gmail.com](mailto:mohdsalimkt@gmail.com) ·
-[LinkedIn](https://linkedin.com/in/muhammed-salim-k-t)
+[LinkedIn](https://www.linkedin.com/in/muhammed-salim-k-t-498125165)
